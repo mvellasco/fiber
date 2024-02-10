@@ -3,14 +3,14 @@ from datetime import datetime
 import falcon
 
 from pony.orm import (
-    Database,
     db_session,
     commit,
+    desc,
+    Database,
     PrimaryKey,
     Required,
     Optional,
     Set,
-    select,
     OptimisticCheckError,
     TransactionIntegrityError,
 )
@@ -27,7 +27,7 @@ class Client(db.Entity):
     transactions = Set("Transaction", reverse="id_do_cliente")
 
     def last_10_transactions(self):
-        return Transaction.select(id_do_cliente=self.id)[:10]
+        return Transaction.select(id_do_cliente=self.id).order_by(desc(Transaction.date_added))[:10]
 
 
 class Transaction(db.Entity):
@@ -35,6 +35,7 @@ class Transaction(db.Entity):
     id_do_cliente = Required("Client", index=True, reverse="transactions")
     valor = Required(int)
     tipo = Required(str)
+    date_added = Required(datetime, default=datetime.now())
     descricao = Optional(str)
 
     def to_dict(self):
@@ -47,7 +48,7 @@ class Transaction(db.Entity):
 
 
 db.generate_mapping(create_tables=True)
-limits = {1: 10000, 2: 80000, 3: 1000000, 4: 10000000, 5: 500000}
+limits = {1: 100000, 2: 80000, 3: 1000000, 4: 10000000, 5: 500000}
 for cid, limit in limits.items():
     try:
         with db_session:
@@ -111,6 +112,17 @@ class TransactionResource:
             return resp
 
         data = req.get_media()
+        if (
+            not all(bool(value) for _, value in data.items())
+            or len(data["descricao"]) > 10
+            or data["tipo"] not in ["c", "d"]
+            or not isinstance(data["valor"], int)
+        ):
+            resp.status = falcon.HTTP_422
+            resp.media = {"status": 422, "detail": "Todos os campos são obrigatórios"}
+            
+            return resp
+
         if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
             resp.status = falcon.HTTP_422
             resp.media = {"status": 422, "detail": "Nao foi possivel adicionar a transacao"}
