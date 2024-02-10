@@ -16,7 +16,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.3'
+          cpus: '0.5'
           memory: '200MB'
     networks:
       fiber-network:
@@ -33,7 +33,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.3'
+          cpus: '0.5'
           memory: '200MB'
     networks:
       fiber-network:
@@ -65,7 +65,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.3'
           memory: '125MB'
     environment:
       - POSTGRES_PASSWORD=postgres
