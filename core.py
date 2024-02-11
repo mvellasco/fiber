@@ -47,21 +47,23 @@ class Transaction(db.Entity):
         }
 
 
-db.generate_mapping(create_tables=True)
-limits = {1: 100000, 2: 80000, 3: 1000000, 4: 10000000, 5: 500000}
-for cid, limit in limits.items():
-    try:
-        with db_session:
-            client = Client(id=cid, limit=limit, balance=0)
-    except TransactionIntegrityError:
-        with db_session:
-            for client in Client.select():
-                client.delete()
-    finally:
-        with db_session:
-            client = Client[cid]
-            client.limit = limit
-            commit()
+def initialize_database():
+    """TODO: docstring here."""
+    db.generate_mapping(create_tables=True)
+
+    # Create and initialize clients.
+    limits = {1: 100000, 2: 80000, 3: 1000000, 4: 10000000, 5: 500000}
+    for cid, limit in limits.items():
+        try:
+            with db_session:
+                client = Client(id=cid, limit=limit, balance=0)
+        except TransactionIntegrityError:
+            with db_session:
+                client = Client[cid]
+                client.limit = limit
+                client.balance = 0
+            with db_session:
+                Transaction.select().delete()
 
 
 def ingest_transaction(client, transaction):
@@ -80,7 +82,8 @@ def get_client_transactions(client_id, limit=None):
         return Transaction.select(id_do_cliente=client_id)
 
 
-class TransactionResource:
+class BalanceResource:
+    """TODO: docstring here."""
     @db_session
     def on_get(self, req, resp, client_id):
         try:
@@ -102,6 +105,11 @@ class TransactionResource:
 
         resp.media = balance
 
+        return resp
+
+
+class TransactionResource:
+    """TODO: Docstring here."""
     def on_post(self, req, resp, client_id):
         try:
             with db_session:
@@ -140,10 +148,13 @@ class TransactionResource:
         resp.media = {"saldo": client.balance, "limite": client.limit}
         resp.status = 200
 
+        return resp
+
 
 def create_app():
     app = falcon.App()
+    initialize_database()
     app.add_route('/clientes/{client_id:int}/transacoes', TransactionResource())
-    app.add_route('/clientes/{client_id:int}/extrato', TransactionResource())
+    app.add_route('/clientes/{client_id:int}/extrato', BalanceResource())
 
     return app
