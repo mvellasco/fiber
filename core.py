@@ -13,6 +13,7 @@ from pony.orm import (
     Set,
     OptimisticCheckError,
     TransactionIntegrityError,
+    OperationalError,
 )
 
 
@@ -43,7 +44,7 @@ class Transaction(db.Entity):
             "valor": self.valor,
             "descricao": self.descricao,
             "tipo": self.tipo,
-            "realizada_em": datetime.now().isoformat()
+            "realizada_em": self.date_added.isoformat(),
         }
 
 
@@ -65,6 +66,15 @@ def initialize_database():
             with db_session:
                 Transaction.select().delete()
 
+
+def _get_db_session(retry=0):
+    try:
+        with db_session(serializable=True) as session:
+            yield session
+    except OperationalError as exc:
+        if retry <= 10:
+            return _get_db_session(retry=retry + 1)
+        raise exc
 
 def ingest_transaction(client, transaction):
     if transaction.tipo == "c":
@@ -131,15 +141,15 @@ class TransactionResource:
             
             return resp
 
-        if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
-            resp.status = falcon.HTTP_422
-            resp.media = {"status": 422, "detail": "Nao foi possivel adicionar a transacao"}
-
-            return resp
-
         try:
-            with db_session:
+            with db_session:  # serializable=True, retry=5 -> TODO: Add get session handler
                 client = Client[client_id]
+                if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
+                    resp.status = falcon.HTTP_422
+                    resp.media = {"status": 422, "detail": "Nao foi possivel adicionar a transacao"}
+
+                    return resp
+
                 transaction = Transaction(**data, id_do_cliente=client_id)
                 ingest_transaction(client, transaction)
         except OptimisticCheckError:
