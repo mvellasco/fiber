@@ -1,8 +1,4 @@
-FROM pypy:3
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-                pypy-lib \
-        && rm -rf /var/lib/apt/lists/*
+FROM pypy:3.10-7.3.15-bookworm
 
 WORKDIR /app
 
