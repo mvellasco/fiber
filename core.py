@@ -4,7 +4,6 @@ import falcon
 
 from pony.orm import (
     db_session,
-    commit,
     desc,
     Database,
     PrimaryKey,
@@ -87,7 +86,11 @@ def ingest_transaction(client_id, transaction):
 
 
 class BalanceResource:
-    """TODO: docstring here."""
+    """Handle getting the balance of a client.
+
+    TODO: add more details here.
+    """
+
     @db_session(serializable=True, retry=10)
     def on_get(self, req, resp, client_id):
         try:
@@ -113,7 +116,13 @@ class BalanceResource:
 
 
 class TransactionResource:
-    """TODO: Docstring here."""
+    """Handle creating transactions.
+
+    Uses the db_session decorator to ensure that the transaction is
+    properly committed to the database. The session is executed with
+    SERIALIZABLE isolation level.
+    """
+
     @db_session(serializable=True, retry=100)
     def on_post(self, req, resp, client_id):
         try:
@@ -136,7 +145,6 @@ class TransactionResource:
             return resp
 
         try:
-            # with db_session:
             client = Client[client_id]
             if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
                 resp.status = falcon.HTTP_422
