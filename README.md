@@ -1,5 +1,7 @@
 ## Fiber
-Uma modesta aplicação feita em Python, usando Falcon como framework web, Pony(ORM) e PostgreSQL no banco de dados. A aplicação roda utilizando o interpretador PyPy em sua versão mais recente.
+Uma aplicação modesta(mas com fibra) feita em Python :snake:, usando [Falcon](https://falconframework.org/) como framework web, [Pony ORM](https://ponyorm.org/), e o banco de dados [Postgres](https://www.postgresql.org/).
+
+A aplicação roda utilizando o compilador JIT e interpretador [PyPy](https://doc.pypy.org/en/latest/index.html) em sua versão mais recente.
 
 ### Resultados de Momento
 obs: a cobra está fumando :snake: :smoking:
