@@ -17,7 +17,7 @@ from pony.orm import (
 
 
 db = Database()
-db.bind(provider="postgres", user="postgres", password="postgres", host="db", database="banco")
+db.bind(provider="postgres", user="postgres", password="postgres", host="fiber-db", database="banco")
 
 
 class Client(db.Entity):
