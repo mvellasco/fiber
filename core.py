@@ -25,18 +25,18 @@ class Client(db.Entity):
     id = PrimaryKey(int, auto=False)
     limit = Required(int)
     balance = Required(int)
-    transactions = Set("Transaction", reverse="id_do_cliente")
+    transactions = Set("Transaction", reverse="client")
 
     def last_10_transactions(self):
-        return Transaction.select(id_do_cliente=self.id).order_by(desc(Transaction.date_added))[:10]
+        return self.transactions.order_by(desc(Transaction.date_added))[:9]
 
 
 class Transaction(db.Entity):
     id = PrimaryKey(int, auto=True)
-    id_do_cliente = Required("Client", index=True, reverse="transactions")
+    client = Required("Client", index=True, reverse="transactions")
     valor = Required(int)
     tipo = Required(str)
-    date_added = Required(datetime, default=datetime.now())
+    date_added = Required(datetime)
     descricao = Optional(str)
 
     def to_dict(self):
@@ -69,14 +69,15 @@ def initialize_database():
 
 def _get_db_session(retry=0):
     try:
-        with db_session(serializable=True) as session:
-            yield session
+        yield db_session(serializable=True)
     except OperationalError as exc:
-        if retry <= 10:
-            return _get_db_session(retry=retry + 1)
+        if retry <= 1_000:
+            yield from _get_db_session(retry=retry + 1)
         raise exc
 
-def ingest_transaction(client, transaction):
+
+def ingest_transaction(client_id, transaction):
+    client = Client[client_id]
     if transaction.tipo == "c":
         client.balance += transaction.valor
     elif transaction.tipo == "d":
@@ -85,16 +86,9 @@ def ingest_transaction(client, transaction):
     return None
 
 
-def get_client_transactions(client_id, limit=None):
-    with db_session:
-        if limit is not None:
-            return Transaction.select(id_do_cliente=client_id)[:limit - 1]
-        return Transaction.select(id_do_cliente=client_id)
-
-
 class BalanceResource:
     """TODO: docstring here."""
-    @db_session
+    @db_session(serializable=True, retry=10)
     def on_get(self, req, resp, client_id):
         try:
             client = Client[client_id]
@@ -120,10 +114,10 @@ class BalanceResource:
 
 class TransactionResource:
     """TODO: Docstring here."""
+    @db_session(serializable=True, retry=100)
     def on_post(self, req, resp, client_id):
         try:
-            with db_session:
-                client = Client[client_id]
+            client = Client[client_id]
         except Exception:
             resp.status = falcon.HTTP_404
 
@@ -142,20 +136,24 @@ class TransactionResource:
             return resp
 
         try:
-            with db_session:  # serializable=True, retry=5 -> TODO: Add get session handler
-                client = Client[client_id]
-                if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
-                    resp.status = falcon.HTTP_422
-                    resp.media = {"status": 422, "detail": "Nao foi possivel adicionar a transacao"}
+            # with db_session:
+            client = Client[client_id]
+            if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
+                resp.status = falcon.HTTP_422
+                resp.media = {"status": 422, "detail": "Nao foi possivel adicionar a transacao"}
 
-                    return resp
+                return resp
 
-                transaction = Transaction(**data, id_do_cliente=client_id)
-                ingest_transaction(client, transaction)
+            transaction = Transaction(**data, date_added=datetime.now(), client=client_id)
+            ingest_transaction(client_id, transaction)
         except OptimisticCheckError:
             pass
 
-        resp.media = {"saldo": client.balance, "limite": client.limit}
+        client = Client[client_id]
+        resp.media = {
+            "saldo": client.balance,
+            "limite": client.limit,
+        }
         resp.status = 200
 
         return resp
