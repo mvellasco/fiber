@@ -7,7 +7,7 @@ networks:
 
 services:
   fiber-api-1: # API - Instance 01
-    image: fiber-api
+    image: mvellasco/rinha-fiber-api
     restart: always
     depends_on:
       - db
@@ -24,7 +24,7 @@ services:
           - fiber-api-proxy-1
 
   fiber-api-2: # API - Instance 02
-    image: fiber-api
+    image: mvellasco/rinha-fiber-api
     restart: always
     depends_on:
       - db
