@@ -91,7 +91,7 @@ class BalanceResource:
     TODO: add more details here.
     """
 
-    @db_session()
+    @db_session
     def on_get(self, req, resp, client_id):
         try:
             client = Client[client_id]
