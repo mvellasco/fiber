@@ -4,6 +4,7 @@ import falcon
 
 from pony.orm import (
     db_session,
+    commit,
     desc,
     Database,
     PrimaryKey,
@@ -123,7 +124,7 @@ class TransactionResource:
     SERIALIZABLE isolation level.
     """
 
-    @db_session(serializable=True, retry=100)
+    @db_session(retry=100)
     def on_post(self, req, resp, client_id):
         try:
             client = Client[client_id]
@@ -144,20 +145,15 @@ class TransactionResource:
             
             return resp
 
-        try:
-            client = Client[client_id]
-            if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
-                resp.status = falcon.HTTP_422
-                resp.media = {"status": 422, "detail": "Nao foi possivel adicionar a transacao"}
+        if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
+            resp.status = falcon.HTTP_422
+            resp.media = {"status": 422, "detail": "Nao foi possivel adicionar a transacao"}
 
-                return resp
+            return resp
 
-            transaction = Transaction(**data, date_added=datetime.now(), client=client_id)
-            ingest_transaction(client_id, transaction)
-        except OptimisticCheckError:
-            pass
+        transaction = Transaction(**data, date_added=datetime.now(), client=client_id)
+        ingest_transaction(client_id, transaction)
 
-        client = Client[client_id]
         resp.media = {
             "saldo": client.balance,
             "limite": client.limit,
