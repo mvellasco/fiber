@@ -4,14 +4,12 @@ import falcon
 
 from pony.orm import (
     db_session,
-    commit,
     desc,
     Database,
     PrimaryKey,
     Required,
     Optional,
     Set,
-    OptimisticCheckError,
     TransactionIntegrityError,
     OperationalError,
 )
