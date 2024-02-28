@@ -166,7 +166,7 @@ class TransactionResource:
         try:
             if client_id not in [1, 2, 3, 4, 5]:
                 raise ValueError(f"Client with id #{client_id} not found.")
-        except Exception:
+        except ValueError:
             resp.status = falcon.HTTP_404
 
             return resp
