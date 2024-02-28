@@ -1,9 +1,11 @@
 from datetime import datetime
+from functools import lru_cache
 
 import falcon
 
 from pony.orm import (
     db_session,
+    rollback,
     desc,
     Database,
     PrimaryKey,
@@ -25,6 +27,7 @@ class Client(db.Entity):
     balance = Required(int)
     transactions = Set("Transaction", reverse="client")
 
+    @db_session
     def last_10_transactions(self):
         return self.transactions.order_by(desc(Transaction.date_added))[:9]
 
@@ -43,6 +46,23 @@ class Transaction(db.Entity):
             "descricao": self.descricao,
             "tipo": self.tipo,
             "realizada_em": self.date_added.isoformat(),
+        }
+
+
+class TransactionInterface:
+    def __init__(self, valor, tipo, descricao, date_added, client):
+        self.valor = valor
+        self.tipo = tipo
+        self.descricao = descricao
+        self.date_added = date_added
+        self.client = client
+
+    def to_dict(self):
+        return {
+            "valor": self.valor,
+            "descricao": self.descricao,
+            "tipo": self.tipo,
+            "date_added": self.date_added.isoformat(),
         }
 
 
@@ -74,14 +94,36 @@ def _get_db_session(retry=0):
         raise exc
 
 
-def ingest_transaction(client_id, transaction):
-    client = Client[client_id]
-    if transaction.tipo == "c":
-        client.balance += transaction.valor
-    elif transaction.tipo == "d":
-        client.balance -= transaction.valor
+@db_session(retry=100)
+def ingest_transaction(client_id, transaction_interface):
+    """Ingest a transaction into the database and update the client's balance.
 
-    return None
+    :param client_id: the id of the client.
+    :param transaction: the transaction dto to ingest.
+    :return: a tuple.
+    """
+    client = Client[client_id]
+
+    if transaction_interface.tipo == "c":
+        client.balance += transaction_interface.valor
+    elif transaction_interface.tipo == "d":
+        client.balance -= transaction_interface.valor
+
+    if transaction_interface.tipo == "d" and abs(client.balance) > client.limit:
+        rollback()
+        return False, None
+
+    get_client.cache_clear()
+    Transaction(client=client, **transaction_interface.to_dict())
+
+    return True, client
+
+
+@lru_cache(maxsize=16)
+@db_session
+def get_client(client_id):
+    """Return a client object from the database, filtering by id."""
+    return Client[client_id]
 
 
 class BalanceResource:
@@ -90,10 +132,9 @@ class BalanceResource:
     TODO: add more details here.
     """
 
-    @db_session
     def on_get(self, req, resp, client_id):
         try:
-            client = Client[client_id]
+            client = get_client(client_id=client_id)
         except Exception:
             resp.status = falcon.HTTP_404
             resp.media = {"status": 404, "detail": "Cliente nao encontrado"}
@@ -118,14 +159,13 @@ class TransactionResource:
     """Handle creating transactions.
 
     Uses the db_session decorator to ensure that the transaction is
-    properly committed to the database. The session is executed with
-    SERIALIZABLE isolation level.
+    properly committed to the database.
     """
 
-    @db_session(retry=100)
     def on_post(self, req, resp, client_id):
         try:
-            client = Client[client_id]
+            if client_id not in [1, 2, 3, 4, 5]:
+                raise ValueError(f"Client with id #{client_id} not found.")
         except Exception:
             resp.status = falcon.HTTP_404
 
@@ -143,20 +183,18 @@ class TransactionResource:
             
             return resp
 
-        if data["tipo"] == "d" and (abs(client.balance) + data["valor"]) > client.limit:
+        transaction_interface = TransactionInterface(**data, date_added=datetime.now(), client=client_id)
+        result, updated_client = ingest_transaction(client_id, transaction_interface)
+
+        if result and isinstance(updated_client, Client):
+            resp.status = falcon.HTTP_200
+            resp.media = {
+                "saldo": updated_client.balance,
+                "limite": updated_client.limit,
+            }
+        else:
             resp.status = falcon.HTTP_422
-            resp.media = {"status": 422, "detail": "Nao foi possivel adicionar a transacao"}
-
-            return resp
-
-        transaction = Transaction(**data, date_added=datetime.now(), client=client_id)
-        ingest_transaction(client_id, transaction)
-
-        resp.media = {
-            "saldo": client.balance,
-            "limite": client.limit,
-        }
-        resp.status = 200
+            resp.media = {"status": 422, "detail": "Transação inválida"}
 
         return resp
 
