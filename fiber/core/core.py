@@ -1,52 +1,15 @@
+import logging
+from collections import OrderedDict
 from datetime import datetime
 from functools import lru_cache
 
 import falcon
+import memcache
+from pony.orm import db_session, rollback, OperationalError
 
-from pony.orm import (
-    db_session,
-    rollback,
-    desc,
-    Database,
-    PrimaryKey,
-    Required,
-    Optional,
-    Set,
-    TransactionIntegrityError,
-    OperationalError,
-)
+from fiber.database import Client, Transaction, initialize_database
 
-
-db = Database()
-db.bind(provider="postgres", user="postgres", password="postgres", host="fiber-db", database="banco")
-
-
-class Client(db.Entity):
-    id = PrimaryKey(int, auto=False)
-    limit = Required(int)
-    balance = Required(int)
-    transactions = Set("Transaction", reverse="client")
-
-    @db_session
-    def last_10_transactions(self):
-        return self.transactions.order_by(desc(Transaction.date_added))[:9]
-
-
-class Transaction(db.Entity):
-    id = PrimaryKey(int, auto=True)
-    client = Required("Client", index=True, reverse="transactions")
-    valor = Required(int)
-    tipo = Required(str)
-    date_added = Required(datetime)
-    descricao = Optional(str)
-
-    def to_dict(self):
-        return {
-            "valor": self.valor,
-            "descricao": self.descricao,
-            "tipo": self.tipo,
-            "realizada_em": self.date_added.isoformat(),
-        }
+logger = logging.getLogger(__name__)
 
 
 class TransactionInterface:
@@ -66,25 +29,6 @@ class TransactionInterface:
         }
 
 
-def initialize_database():
-    """TODO: docstring here."""
-    db.generate_mapping(create_tables=True)
-
-    # Create and initialize clients.
-    limits = {1: 100000, 2: 80000, 3: 1000000, 4: 10000000, 5: 500000}
-    for cid, limit in limits.items():
-        try:
-            with db_session:
-                client = Client(id=cid, limit=limit, balance=0)
-        except TransactionIntegrityError:
-            with db_session:
-                client = Client[cid]
-                client.limit = limit
-                client.balance = 0
-            with db_session:
-                Transaction.select().delete()
-
-
 def _get_db_session(retry=0):
     try:
         yield db_session(serializable=True)
@@ -100,7 +44,7 @@ def ingest_transaction(client_id, transaction_interface):
 
     :param client_id: the id of the client.
     :param transaction: the transaction dto to ingest.
-    :return: a tuple.
+    :return: a tuple with a boolean indicating success and the updated client object.
     """
     client = Client[client_id]
 
@@ -113,13 +57,34 @@ def ingest_transaction(client_id, transaction_interface):
         rollback()
         return False, None
 
-    get_client.cache_clear()
+    invalidate_cache(client_id=client_id)
     Transaction(client=client, **transaction_interface.to_dict())
 
     return True, client
 
 
-@lru_cache(maxsize=16)
+cache = memcache.Client(['fiber-memcached:11211'], debug=0)
+
+
+def invalidate_cache(client_id):
+    cache.delete(f"client_id_{client_id}")
+    return None
+
+
+def cache_client(func):
+    """Cache the client object until manual expiration."""
+    def wrapper(client_id):
+        if cache.get(f"client_id_{client_id}"):
+            return cache.get(f"client_id_{client_id}")
+
+        _result = func(client_id)
+        cache.set(f"client_id_{client_id}", _result)
+
+        return _result
+    return wrapper
+
+
+@cache_client
 @db_session
 def get_client(client_id):
     """Return a client object from the database, filtering by id."""
@@ -135,7 +100,8 @@ class BalanceResource:
     def on_get(self, req, resp, client_id):
         try:
             client = get_client(client_id=client_id)
-        except Exception:
+        except Exception as exc:
+            logger.exception(f"Exception: {exc}")
             resp.status = falcon.HTTP_404
             resp.media = {"status": 404, "detail": "Cliente nao encontrado"}
 

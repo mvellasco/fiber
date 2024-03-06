@@ -2,3 +2,4 @@ gunicorn
 falcon
 pony
 psycopg2cffi
+python-memcached
