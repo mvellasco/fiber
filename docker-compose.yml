@@ -62,7 +62,7 @@ services:
     networks:
       fiber-network:
         aliases:
-          - nginx-proxy
+          - fiber-nginx-proxy
 
   fiber-db: # database
     image:  postgres:15.3-bullseye
@@ -88,7 +88,7 @@ services:
       fiber-network:
         aliases:
           - db-proxy
-  
+
   fiber-memcached:
     image: memcached:latest
     container_name: fiber-memcached
