@@ -1,5 +1,5 @@
-gunicorn
+bjoern
 falcon
 pony
-psycopg2cffi
+psycopg2-binary
 python-memcached

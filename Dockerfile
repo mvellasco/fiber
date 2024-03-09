@@ -1,4 +1,6 @@
-FROM pypy:3.10-7.3.15-bookworm
+FROM python:3.10-slim-buster
+
+RUN apt update && apt install -y libev-dev build-essential
 
 WORKDIR /app
 
@@ -6,4 +8,4 @@ COPY . .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["gunicorn", "-b", "0.0.0.0:8000", "wsgi:application", "-w", "1"]
+CMD ["python", "-m", "fiber.wsgi"]
