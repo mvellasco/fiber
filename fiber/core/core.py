@@ -1,7 +1,5 @@
 import logging
-from collections import OrderedDict
 from datetime import datetime
-from functools import lru_cache
 
 import falcon
 import memcache
@@ -10,6 +8,7 @@ from pony.orm import db_session, rollback, OperationalError
 from fiber.database import Client, Transaction, initialize_database
 
 logger = logging.getLogger(__name__)
+cache = memcache.Client(['fiber-memcached:11211'], debug=0)
 
 
 class TransactionInterface:
@@ -61,9 +60,6 @@ def ingest_transaction(client_id, transaction_interface):
     Transaction(client=client, **transaction_interface.to_dict())
 
     return True, client
-
-
-cache = memcache.Client(['fiber-memcached:11211'], debug=0)
 
 
 def invalidate_cache(client_id):
