@@ -1,7 +1,7 @@
 ## Fiber
 [Fiber](https://github.com/mvellasco/fiber) é uma aplicação modesta(mas com fibra) feita em Python :snake:, usando [Falcon](https://falconframework.org/) como framework web, [Pony ORM](https://ponyorm.org/), e o banco de dados [Postgres](https://www.postgresql.org/).
 
-A aplicação roda utilizando o compilador JIT e interpretador [PyPy3](https://doc.pypy.org/en/latest/index.html) em sua versão mais recente(7.3.15).
+A aplicação roda utilizando o [Python 3.10](https://docs.python.org/3.10/).
 
 ### Detalhes e a Rinha de Backend
 O desafio que o software se propõe a resolver, é tema da [Rinha de Backend](https://github.com/mvellasco/rinha-de-backend-2024-q1/tree/mvellasco-fiber-rinha). Em poucas palavras, a idéia da rinha é explorar um tópico específico relacionado ao backend de aplicações. Nessa edição, o problema foi *concorrência*, com múltiplas instâncias do projeto acessando um banco de dados e tendo que aplicar as regras de negócio de forma consistente.
